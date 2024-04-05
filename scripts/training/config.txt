@@ -1,0 +1,17 @@
+train_file=data/train_files.txt
+test_file=data/test_files.txt
+validation_file=data/validation_files.txt
+msa_tool=hhblits
+data_path=processed_data/
+alignment_max_depth=100
+embed_size=16
+stage1_depth=2
+conv_depth=10
+n_filters=16
+pool_depth=10
+bidir_size=50
+stage2_depth=2
+dropfrac=0.5
+batch_size=8
+num_epochs=100
+num_cpu=4
