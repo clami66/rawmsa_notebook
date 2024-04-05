@@ -16,8 +16,8 @@ from sklearn.metrics import average_precision_score, precision_recall_curve, roc
 
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
-gpu_options = tf.compat.v1.GPUOptions(per_process_gpu_memory_fraction=0.333)
-sess = tf.compat.v1.Session(config=tf.compat.v1.ConfigProto(gpu_options=gpu_options))
+#gpu_options = tf.compat.v1.GPUOptions(per_process_gpu_memory_fraction=0.333)
+#sess = tf.compat.v1.Session(config=tf.compat.v1.ConfigProto(gpu_options=gpu_options))
 
 def parse_config(config_file):
     with open(config_file, 'r') as f:
