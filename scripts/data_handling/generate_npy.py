@@ -17,7 +17,7 @@ class ProteinProcessor:
         self.bad_proteins = []
         self.master_dataset = {}
         self.outpath = outpath
-
+        
     def pad_or_trim_array(self, arr):
         rows, cols = arr.shape
         if rows < self.target_shape:
@@ -74,20 +74,25 @@ class ProteinProcessor:
                 pass
 
 class FastaProcessor:
-    def __init__(self, fasta_file_path, path_to_num, disprot_tsv, outpath):
+    def __init__(self, fasta_file_path, path_to_num, disprot_tsv, outpath, target_msa_depth):
         self.fasta_file_path = fasta_file_path
         self.path_to_num = path_to_num
         self.disprot_tsv = disprot_tsv
         self.outpath = outpath
+        self.target_msa_depth = target_msa_depth
 
     def process_fasta(self):
         fasta_records = self.read_fasta_file(self.fasta_file_path)
         master_df = pd.read_csv(self.disprot_tsv, sep='\t')
         protein_group = master_df.groupby(by='acc')
-        target_shape = 3000
+        target_shape = self.target_msa_depth
 
-        processor = ProteinProcessor(master_df=protein_group, target_shape=target_shape, path_to_num=self.path_to_num, outpath=self.outpath)
-        print(f'Generating .npy files for {len(fasta_records)} proteins')
+        processor = ProteinProcessor(master_df=protein_group, 
+                                    target_shape=target_shape, 
+                                    path_to_num=self.path_to_num, 
+                                    outpath=self.outpath)
+        
+        print(f'\nGenerating .npy files for {len(fasta_records)} proteins')
         print('Output path:', self.outpath)
         for record in tqdm(fasta_records, ncols=50):
             processor.process_protein(record)
@@ -110,7 +115,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-    fasta_processor = FastaProcessor(args.fasta_file, args.path_to_num, args.disprot_tsv, args.outpath)
+    fasta_processor = FastaProcessor(args.fasta_file, args.path_to_num, args.disprot_tsv, args.outpath, args.target_msa_depth)
     fasta_processor.process_fasta()
 
 if __name__ == "__main__":
