@@ -96,9 +96,9 @@ class CustomModel:
     def build_model(self):
         inputs = layers.Input(shape=self.input_shape)
         embedded = layers.Embedding(26, self.embed_size)(inputs)
-        reshaped = layers.Reshape((-1, self.alignment_max_depth, self.embed_size))(embedded)
+        #reshaped = layers.Reshape((-1, self.alignment_max_depth, self.embed_size))(embedded)
 
-        convoluted = reshaped
+        convoluted = embedded
         norm = False
         for i in range(self.stage1_depth):
             convoluted = self.convnet(convoluted, self.conv_depth, self.n_filters, self.pool_depth, norm)
@@ -111,8 +111,9 @@ class CustomModel:
             bidir_output = layers.Dropout(self.dropfrac)(bidir_output)
 
         #predictions_ = layers.Bidirectional(layers.LSTM(2, return_sequences=True, activation='tanh'), merge_mode='ave')(bidir_output)
-        predictions=Dense(2, activation='softmax')(bidir_output)
-        predictions = layers.Activation('softmax')(predictions_)
+        #predictions = layers.Activation('softmax')(predictions)
+
+        predictions = layers.Dense(2, activation='softmax')(bidir_output)
 
         model = Model(inputs=inputs, outputs=predictions)
         return model
@@ -129,7 +130,7 @@ class DataProcessor:
         count = 0
         for target in data_list:
             target = target.rstrip()
-            if Path(f'{data_path}/{target}.npy').exists():
+            if Path(data_path, f"{target}.npy").exists():
                 count += 1
 
         return count
@@ -139,20 +140,19 @@ class DataProcessor:
     def generate_inputs_onego(data_list, alignment_max_depth):
         for target in data_list:
             target = target.rstrip()
-            try:
-                data = np.load(f'{data_path}/{target}.npy', allow_pickle=True).item()
+            target_path = Path(data_path, f'{target}.npy')
+            if target_path.exists():
+                data = np.load(target_path, allow_pickle=True).item()
                 features, labels = data['features'], data['labels']
-            except:
-                pass
+            else:
+                continue
 
             # Process X
             length = features.shape[0]
-            X_batch = features[:, :alignment_max_depth].reshape(length * alignment_max_depth)[np.newaxis, :]
+            X_batch = features[:, :alignment_max_depth][np.newaxis, :] #.reshape(length * alignment_max_depth)[np.newaxis, :]
 
-            # Process Y
-            labels_ = labels[np.newaxis, :]
-            labels_ = np.reshape(labels_, (1, labels_.shape[1], 1))
-            yield(X_batch, labels_)
+            labels = np.reshape(labels, (1, labels.shape[0], 1))
+            yield(X_batch, labels)
     
 
 if __name__ == "__main__":
@@ -164,6 +164,7 @@ if __name__ == "__main__":
     msa_tool = config.get('msa_tool')
     data_path = config.get('data_path')
     log_dir = config.get('log_path')
+    model_dir = config.get("model_path")
     alignment_max_depth = int(config.get('alignment_max_depth', 1000))
     embed_size = int(config.get('embed_size', 16))
     stage1_depth = int(config.get('stage1_depth', 2))
@@ -188,11 +189,11 @@ if __name__ == "__main__":
     tf.config.get_visible_devices()
 
     # INITIALIZE MODELS
-    input_shape = (None,)
+    input_shape = (None, alignment_max_depth)
     model = CustomModel(input_shape, alignment_max_depth, embed_size, stage1_depth, conv_depth, n_filters, pool_depth, bidir_size, stage2_depth, dropfrac)
     model.compile_model()
     print(model.model.summary())
-    tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=1)
+    #tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=1)
 
     # TRAINING
     track_history = []
@@ -212,7 +213,7 @@ if __name__ == "__main__":
         history = model.model.fit(DataProcessor.generate_inputs_onego(train_list,alignment_max_depth),
                                 steps_per_epoch=train_steps,
                                 epochs=1,
-                                callbacks=[tensorboard_callback],
+                                callbacks=[],
                                 use_multiprocessing=False)
         
         print(f'Testing model on {validation_file}, {len(validate_list)} proteins ...')
@@ -254,30 +255,10 @@ if __name__ == "__main__":
         # Calculate AUPR and compare with best AUPR
         if aupr > best_aupr:
             # Save the model
-            model.model.save(f'trained_models/best_model_{msa_tool}_full_{alignment_max_depth}_{np.round(aupr,2)}.h5')
+            savepath = Path(model_dir, f"best_model_{msa_tool}_full_{alignment_max_depth}_{np.round(aupr,2)}.h5")
+            model.model.save(savepath)
             print(f'aupr improved from {best_aupr} to {aupr}, saving model')
             best_aupr = aupr
-        
-        # log_dir = f'training_logs/mmseq_msa_all/'
-        # Path(log_dir).mkdir(parents=True, exist_ok=True)    # Make log dir
 
-        # with open(f'{log_dir}', mode='w') as f:
-        #     f.write(s)
-                
-        # # Evaluate the model on test data
-        # test_metrics = model.model.evaluate(DataProcessor.generate_inputs_onego(test_list, alignment_max_depth),
-        #                                      steps=len(test_list),
-        #                                      use_multiprocessing=False)
-        
-        # # Print test metrics
-        # print("Test Metrics:")
-        # for metric_name, metric_value in zip(model.model.metrics_names, test_metrics):
-        #     print(f"{metric_name}: {metric_value}")
-    
-        #if e%20==0:
-    #     np.save(f'results/training_history_legacy_{alignment_max_depth}_{e}.npy', history.history)
-    #     track_history.append(np.array(list(history.history.values())).flatten())
-    # history_df = pd.DataFrame(np.array(track_history), columns=history.history.keys())
-    # history_df.to_csv(f'results/history_df_legacy_{alignment_max_depth}_{num_epochs}.csv')
 
     

@@ -1,9 +1,10 @@
 train_file=../../data/lists/new/fold_0/train
 test_file=none
 validation_file=../../data/lists/new/fold_0/validation
-msa_tool=hhblits
-data_path=../../data/hhblits/new/npy/
+data_path=/scratch/local/npy/
 log_path=../../logs/
+model_path=../../data/models/
+msa_tool=hhblits
 alignment_max_depth=100
 embed_size=16
 stage1_depth=2
