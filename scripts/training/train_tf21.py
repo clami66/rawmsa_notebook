@@ -87,18 +87,10 @@ if __name__ == "__main__":
     log_dir = config.get('log_path')
     model_dir = config.get("model_path")
     alignment_max_depth = int(config.get('alignment_max_depth', 1000))
-    #embed_size = int(config.get('embed_size', 16))
-    #stage1_depth = int(config.get('stage1_depth', 2))
-    #conv_depth = int(config.get('conv_depth', 10))
-    #n_filters = int(config.get('n_filters', 16))
-    #pool_depth = int(config.get('pool_depth', 10))
-    #bidir_size = int(config.get('bidir_size', 50))
-    #stage2_depth = int(config.get('stage2_depth', 2))
-    #dropfrac = float(config.get('dropfrac', 0.5))
-    #batch_size = int(config.get('batch_size', 4)) # unused
     num_epochs = int(config.get('num_epochs', 100))
     num_cpu = int(config.get('num_cpu', 30)) # unused
 
+    Path(model_dir).mkdir(parents=True, exist_ok=True)
     # Load train, test, and validation data
     train_list = open(train_file).readlines()
     validate_list = open(validation_file).readlines()
