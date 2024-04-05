@@ -48,7 +48,6 @@ class DataProcessor:
 
         labels = np.reshape(labels[:length], (1, length, 1))
         return X, labels
-
     
     @staticmethod
     def count_steps(data_list):
@@ -57,9 +56,7 @@ class DataProcessor:
             target = target.rstrip()
             if Path(data_path, f"{target}.npy").exists():
                 count += 1
-
         return count
-
 
     @staticmethod
     def generate_inputs_onego(data_list, alignment_max_depth):

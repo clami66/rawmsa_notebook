@@ -103,6 +103,7 @@ def parse_args():
     parser.add_argument("--fasta_file", type=str, help="Path to the FASTA file.")
     parser.add_argument("--path_to_num", type=str, help="Path to .aln files")
     parser.add_argument("--disprot_tsv", type=str, help="disprot_tsv")
+    parser.add_argument("--target_msa_depth", type=int, help="target_msa_depth")
     parser.add_argument("--outpath", type=str, help="path to store .npy files")
 
     return parser.parse_args()
