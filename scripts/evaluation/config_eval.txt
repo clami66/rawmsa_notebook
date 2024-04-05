@@ -1,0 +1,4 @@
+# Parameters for evaluation
+test_file=data/test_files.txt
+trained_models=/trained_models/
+data_path=processed_data/
