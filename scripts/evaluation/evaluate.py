@@ -7,6 +7,8 @@ from tqdm import tqdm
 import glob
 import pickle
 
+from sklearn.metrics import average_precision_score, precision_recall_curve, roc_auc_score, roc_curve
+
 class CustomMetrics:
     @staticmethod
     def true_positives(y_true, y_pred):
