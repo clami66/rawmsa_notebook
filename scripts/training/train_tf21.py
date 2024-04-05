@@ -1,22 +1,21 @@
 # Import libraries
+import os
 import math
-from time import gmtime, strftime
+import h5py
 import argparse
 from pathlib import Path
-import time
+from time import gmtime, strftime
 
 from tqdm import tqdm
-import h5py
-import pandas as pd
+import numpy as np
 import tensorflow as tf
+from tensorflow.keras import layers
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input, Embedding, Flatten, Dense, Dropout, Activation, Reshape, Conv2D, MaxPooling2D, BatchNormalization, Bidirectional, LSTM
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint
 from sklearn.metrics import average_precision_score, precision_recall_curve, roc_auc_score, roc_curve
 
-import numpy as np
-from numpy import newaxis
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
 gpu_options = tf.compat.v1.GPUOptions(per_process_gpu_memory_fraction=0.333)
 sess = tf.compat.v1.Session(config=tf.compat.v1.ConfigProto(gpu_options=gpu_options))
 
@@ -87,33 +86,34 @@ class CustomModel:
         self.model = self.build_model()
 
     def convnet(self, input_layer, conv_window, filter_size, pool_window, norm):
-        stage1 = Conv2D(filter_size, (1, conv_window), activation=None, padding='same')(input_layer)
-        stage1 = Activation('relu')(stage1)
+        stage1 = layers.Conv2D(filter_size, (1, conv_window), activation=None, padding='same')(input_layer)
+        stage1 = layers.Activation('relu')(stage1)
         if norm:
-            stage1 = BatchNormalization()(stage1)
-        output = MaxPooling2D(pool_size=(1, pool_window))(stage1)
+            stage1 = layers.BatchNormalization()(stage1)
+        output = layers.MaxPooling2D(pool_size=(1, pool_window))(stage1)
         return output
 
     def build_model(self):
-        inputs = Input(shape=self.input_shape)
-        embedded = Embedding(26, self.embed_size)(inputs)
-        reshaped = Reshape((-1, self.alignment_max_depth, self.embed_size))(embedded)
+        inputs = layers.Input(shape=self.input_shape)
+        embedded = layers.Embedding(26, self.embed_size)(inputs)
+        #reshaped = layers.Reshape((-1, self.alignment_max_depth, self.embed_size))(embedded)
 
-        convoluted = reshaped
+        convoluted = embedded
         norm = False
         for i in range(self.stage1_depth):
             convoluted = self.convnet(convoluted, self.conv_depth, self.n_filters, self.pool_depth, norm)
 
-        reshaped_2 = Reshape((-1, self.n_filters*int(self.alignment_max_depth/(self.pool_depth**self.stage1_depth))))(convoluted)
+        reshaped_2 = layers.Reshape((-1, self.n_filters*int(self.alignment_max_depth/(self.pool_depth**self.stage1_depth))))(convoluted)
 
         bidir_output = reshaped_2
         for i in range(self.stage2_depth):
-            bidir_output = Bidirectional(LSTM(self.bidir_size, return_sequences=True), merge_mode='ave')(bidir_output)
-            bidir_output = Dropout(self.dropfrac)(bidir_output)
+            bidir_output = layers.Bidirectional(layers.LSTM(self.bidir_size, return_sequences=True), merge_mode='ave')(bidir_output)
+            bidir_output = layers.Dropout(self.dropfrac)(bidir_output)
 
-        predictions_ = Bidirectional(LSTM(2, return_sequences=True, activation='tanh'), merge_mode='ave')(bidir_output)
-        #predictions=Dense(2, activation='softmax')(bidir_output)
-        predictions = Activation('softmax')(predictions_)
+        #predictions_ = layers.Bidirectional(layers.LSTM(2, return_sequences=True, activation='tanh'), merge_mode='ave')(bidir_output)
+        #predictions = layers.Activation('softmax')(predictions)
+
+        predictions = layers.Dense(2, activation='softmax')(bidir_output)
 
         model = Model(inputs=inputs, outputs=predictions)
         return model
@@ -126,20 +126,33 @@ class CustomModel:
 
 class DataProcessor:
     @staticmethod
+    def count_steps(data_list):
+        count = 0
+        for target in data_list:
+            target = target.rstrip()
+            if Path(data_path, f"{target}.npy").exists():
+                count += 1
+
+        return count
+
+
+    @staticmethod
     def generate_inputs_onego(data_list, alignment_max_depth):
         for target in data_list:
             target = target.rstrip()
-            data = np.load(f'{data_path}{target}.npy', allow_pickle=True).item()
-            features, labels = data['features'], data['labels']
+            target_path = Path(data_path, f'{target}.npy')
+            if target_path.exists():
+                data = np.load(target_path, allow_pickle=True).item()
+                features, labels = data['features'], data['labels']
+            else:
+                continue
 
             # Process X
             length = features.shape[0]
-            X_batch = features[:, :alignment_max_depth].reshape(length * alignment_max_depth)[newaxis, :]
+            X_batch = features[:, :alignment_max_depth][np.newaxis, :] #.reshape(length * alignment_max_depth)[np.newaxis, :]
 
-            # Process Y
-            labels_ = labels[np.newaxis, :]
-            labels_ = np.reshape(labels_, (1, labels_.shape[1], 1))
-            yield(X_batch, labels_)
+            labels = np.reshape(labels, (1, labels.shape[0], 1))
+            yield(X_batch, labels)
     
 
 if __name__ == "__main__":
@@ -148,8 +161,10 @@ if __name__ == "__main__":
     train_file = config.get('train_file')
     test_file = config.get('test_file')
     validation_file = config.get('validation_file')
-    msa_tool = config.get('data_path')
+    msa_tool = config.get('msa_tool')
     data_path = config.get('data_path')
+    log_dir = config.get('log_path')
+    model_dir = config.get("model_path")
     alignment_max_depth = int(config.get('alignment_max_depth', 1000))
     embed_size = int(config.get('embed_size', 16))
     stage1_depth = int(config.get('stage1_depth', 2))
@@ -165,46 +180,40 @@ if __name__ == "__main__":
 
     # Load train, test, and validation data
     train_list = open(train_file).readlines()
-    test_list = open(test_file).readlines()
     validate_list = open(validation_file).readlines()
 
     # INITIALIZE GPU
     gpus = tf.config.experimental.list_physical_devices('GPU')
     tf.config.experimental.set_memory_growth(gpus[0], True)
-    print(gpus)
-    #tf.config.set_visible_devices([], 'CPU') # hide the CPU
     tf.config.set_visible_devices(gpus[0], 'GPU') # unhide potentially hidden GPU
     tf.config.get_visible_devices()
-    #tf.config.experimental.set_memory_growth()
 
     # INITIALIZE MODELS
-    input_shape = (None,)
+    input_shape = (None, alignment_max_depth)
     model = CustomModel(input_shape, alignment_max_depth, embed_size, stage1_depth, conv_depth, n_filters, pool_depth, bidir_size, stage2_depth, dropfrac)
     model.compile_model()
     print(model.model.summary())
-    tensorboard_callback = TensorBoard(log_dir='./logs', histogram_freq=1)
-    #model_checkpoint_callback = ModelCheckpoint(filepath=f'trained_models/model_checkpoint_depth_{alignment_max_depth}.h5', save_best_only=True, monitor='val_sparse_categorical_accuracy')
-
-    #custom_metrics_instance = CustomMetrics()
-    #callbacks = [PrintCustomMetricsCallback(custom_metrics_instance)]
+    #tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=1)
 
     # TRAINING
     track_history = []
     best_aupr = 0
 
-    log_dir = f'training_logs/'
     Path(log_dir).mkdir(parents=True, exist_ok=True)    # Make log dir
-    timestr = time.strftime("%Y%m%d-%H%M%S")
+    timestr = strftime("%Y%m%d-%H%M%S")
     with open(f'{log_dir}{timestr}_{msa_tool}_full_{alignment_max_depth}', mode='w') as f:
         f.write(f'epoch, msa_depth, auroc, aupr\n')
+
+    train_steps = DataProcessor.count_steps(train_list)
+    print("Training steps:", train_steps)
 
     for e in range(num_epochs):
         print('Fit, epoch ' + str(e) + ":")
         print(strftime("%Y-%m-%d %H:%M:%S", gmtime()))
         history = model.model.fit(DataProcessor.generate_inputs_onego(train_list,alignment_max_depth),
-                                steps_per_epoch=len(train_list),
+                                steps_per_epoch=train_steps,
                                 epochs=1,
-                                callbacks=[tensorboard_callback],
+                                callbacks=[],
                                 use_multiprocessing=False)
         
         print(f'Testing model on {validation_file}, {len(validate_list)} proteins ...')
@@ -217,7 +226,7 @@ if __name__ == "__main__":
 
             # Process X
             length = features.shape[0]
-            X = features[:, :alignment_max_depth].reshape(length * alignment_max_depth)[newaxis, :]
+            X = features[:, :alignment_max_depth].reshape(length * alignment_max_depth)[np.newaxis, :]
 
             # Process Y
             labels_ = labels[np.newaxis, :]
@@ -246,30 +255,10 @@ if __name__ == "__main__":
         # Calculate AUPR and compare with best AUPR
         if aupr > best_aupr:
             # Save the model
-            model.model.save(f'trained_models/best_model_{msa_tool}_full_{alignment_max_depth}_{np.round(aupr,2)}.h5')
+            savepath = Path(model_dir, f"best_model_{msa_tool}_full_{alignment_max_depth}_{np.round(aupr,2)}.h5")
+            model.model.save(savepath)
             print(f'aupr improved from {best_aupr} to {aupr}, saving model')
             best_aupr = aupr
-        
-        # log_dir = f'training_logs/mmseq_msa_all/'
-        # Path(log_dir).mkdir(parents=True, exist_ok=True)    # Make log dir
 
-        # with open(f'{log_dir}', mode='w') as f:
-        #     f.write(s)
-                
-        # # Evaluate the model on test data
-        # test_metrics = model.model.evaluate(DataProcessor.generate_inputs_onego(test_list, alignment_max_depth),
-        #                                      steps=len(test_list),
-        #                                      use_multiprocessing=False)
-        
-        # # Print test metrics
-        # print("Test Metrics:")
-        # for metric_name, metric_value in zip(model.model.metrics_names, test_metrics):
-        #     print(f"{metric_name}: {metric_value}")
-    
-        #if e%20==0:
-    #     np.save(f'results/training_history_legacy_{alignment_max_depth}_{e}.npy', history.history)
-    #     track_history.append(np.array(list(history.history.values())).flatten())
-    # history_df = pd.DataFrame(np.array(track_history), columns=history.history.keys())
-    # history_df.to_csv(f'results/history_df_legacy_{alignment_max_depth}_{num_epochs}.csv')
 
     
