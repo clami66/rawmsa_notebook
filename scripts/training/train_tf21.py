@@ -1,5 +1,6 @@
 # Import libraries
 import os
+import sys
 import math
 import h5py
 import argparse
@@ -12,7 +13,7 @@ import tensorflow as tf
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint
 from sklearn.metrics import average_precision_score, precision_recall_curve, roc_auc_score, roc_curve
 
-from models import ConvLSTM
+from models import ConvLSTM, Attention
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
 
 def parse_config(config_file):
@@ -37,6 +38,19 @@ print(config)
 
 class DataProcessor:
     @staticmethod
+    def process_npy(data, alignment_max_depth):
+        features, labels = data['features'], data['labels']
+        # Process X
+        length = features.shape[0]
+        if length > 3000:
+            length = 3000
+        X = features[:length, :alignment_max_depth][np.newaxis, :] #.reshape(length * alignment_max_depth)[np.newaxis, :]
+
+        labels = np.reshape(labels[:length], (1, length, 1))
+        return X, labels
+
+    
+    @staticmethod
     def count_steps(data_list):
         count = 0
         for target in data_list:
@@ -54,40 +68,36 @@ class DataProcessor:
             target_path = Path(data_path, f'{target}.npy')
             if target_path.exists():
                 data = np.load(target_path, allow_pickle=True).item()
-                features, labels = data['features'], data['labels']
             else:
                 continue
+            X, labels = DataProcessor.process_npy(data, alignment_max_depth)
 
-            # Process X
-            length = features.shape[0]
-            X_batch = features[:, :alignment_max_depth][np.newaxis, :] #.reshape(length * alignment_max_depth)[np.newaxis, :]
-
-            labels = np.reshape(labels, (1, labels.shape[0], 1))
-            yield(X_batch, labels)
+            yield X, labels
     
 
 if __name__ == "__main__":
     # PARAMS
     # Load parameters from config file
+    model_type = config.get("model_type")
     train_file = config.get('train_file')
-    test_file = config.get('test_file')
+    test_file = config.get('test_file') # unused
     validation_file = config.get('validation_file')
     msa_tool = config.get('msa_tool')
     data_path = config.get('data_path')
     log_dir = config.get('log_path')
     model_dir = config.get("model_path")
     alignment_max_depth = int(config.get('alignment_max_depth', 1000))
-    embed_size = int(config.get('embed_size', 16))
-    stage1_depth = int(config.get('stage1_depth', 2))
-    conv_depth = int(config.get('conv_depth', 10))
-    n_filters = int(config.get('n_filters', 16))
-    pool_depth = int(config.get('pool_depth', 10))
-    bidir_size = int(config.get('bidir_size', 50))
-    stage2_depth = int(config.get('stage2_depth', 2))
-    dropfrac = float(config.get('dropfrac', 0.5))
-    batch_size = int(config.get('batch_size', 4))
+    #embed_size = int(config.get('embed_size', 16))
+    #stage1_depth = int(config.get('stage1_depth', 2))
+    #conv_depth = int(config.get('conv_depth', 10))
+    #n_filters = int(config.get('n_filters', 16))
+    #pool_depth = int(config.get('pool_depth', 10))
+    #bidir_size = int(config.get('bidir_size', 50))
+    #stage2_depth = int(config.get('stage2_depth', 2))
+    #dropfrac = float(config.get('dropfrac', 0.5))
+    #batch_size = int(config.get('batch_size', 4)) # unused
     num_epochs = int(config.get('num_epochs', 100))
-    num_cpu = int(config.get('num_cpu', 30))
+    num_cpu = int(config.get('num_cpu', 30)) # unused
 
     # Load train, test, and validation data
     train_list = open(train_file).readlines()
@@ -101,13 +111,17 @@ if __name__ == "__main__":
 
     # INITIALIZE MODELS
     input_shape = (None, alignment_max_depth)
-    model = ConvLSTM.Model(input_shape, alignment_max_depth, embed_size, stage1_depth, conv_depth, n_filters, pool_depth, bidir_size, stage2_depth, dropfrac)
+    if model_type == "ConvLSTM":
+        model = ConvLSTM.Model(config)
+    elif model_type == "Attention":
+        model = Attention.Model(config)
+    else:
+        print(f"Model type {model_type} doesn't exist")
+        sys.exit(1)
     model.compile_model()
-    print(model.model.summary())
-    #tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=1)
+    model.model.summary()
 
     # TRAINING
-    track_history = []
     best_aupr = 0
 
     Path(log_dir).mkdir(parents=True, exist_ok=True)    # Make log dir
@@ -132,20 +146,17 @@ if __name__ == "__main__":
         y_all_test = []
         for target in tqdm(validate_list):
             target = target.rstrip()
-            data = np.load(f'{data_path}{target}.npy', allow_pickle=True).item()
-            features, labels = data['features'], data['labels']
+            target_path = Path(data_path, f"{target}.npy")
+            if target_path.exists():
+                data = np.load(target_path, allow_pickle=True).item()
+            else:
+                continue
 
-            # Process X
-            length = features.shape[0]
-            X = features[:, :alignment_max_depth].reshape(length * alignment_max_depth)[np.newaxis, :]
-
-            # Process Y
-            labels_ = labels[np.newaxis, :]
-            labels_ = np.reshape(labels_, (1, labels_.shape[1], 1))
+            X, labels = DataProcessor.process_npy(data, alignment_max_depth)
             y = model.model.predict(X)
 
-            labels_all_test.append(labels_.flatten())
-            y_all_test.append(y[0][:,1])
+            labels_all_test.append(labels.flatten())
+            y_all_test.append(y[0][:, 1])
 
         labels_all_test_arr = np.concatenate(labels_all_test)
         y_all_test_arr = np.concatenate(y_all_test)
@@ -167,7 +178,7 @@ if __name__ == "__main__":
             # Save the model
             savepath = Path(model_dir, f"best_model_{msa_tool}_full_{alignment_max_depth}_{np.round(aupr,2)}.h5")
             model.model.save(savepath)
-            print(f'aupr improved from {best_aupr} to {aupr}, saving model')
+            print(f'aupr improved from {best_aupr:.4f} to {aupr:.4f}, saving model')
             best_aupr = aupr
 
 

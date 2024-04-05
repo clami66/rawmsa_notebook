@@ -1,4 +1,4 @@
-model_type=ConvLSTM
+model_type=Attention
 train_file=../../data/lists/new/fold_0/train
 test_file=none
 validation_file=../../data/lists/new/fold_0/validation

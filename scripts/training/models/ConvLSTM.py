@@ -2,17 +2,17 @@ from tensorflow.keras import layers, models
 from utils.NetUtils import CustomMetrics
 
 class Model:
-    def __init__(self, input_shape, alignment_max_depth, embed_size, stage1_depth, conv_depth, n_filters, pool_depth, bidir_size, stage2_depth, dropfrac):
-        self.input_shape = input_shape
-        self.alignment_max_depth = alignment_max_depth
-        self.embed_size = embed_size
-        self.stage1_depth = stage1_depth
-        self.conv_depth = conv_depth
-        self.n_filters = n_filters
-        self.pool_depth = pool_depth
-        self.bidir_size = bidir_size
-        self.stage2_depth = stage2_depth
-        self.dropfrac = dropfrac
+    def __init__(self, config):
+        self.alignment_max_depth = int(config.get('alignment_max_depth', 1000))
+        self.input_shape = (None, self.alignment_max_depth)
+        self.embed_size = int(config.get('embed_size', 16))
+        self.stage1_depth = int(config.get('stage1_depth', 2))
+        self.conv_depth = int(config.get('conv_depth', 10))
+        self.n_filters = int(config.get('n_filters', 16))
+        self.pool_depth = int(config.get('pool_depth', 10))
+        self.bidir_size = int(config.get('bidir_size', 50))
+        self.stage2_depth = int(config.get('stage2_depth', 2))
+        self.dropfrac = float(config.get('dropfrac', 0.5))
         self.model = self.build_model()
 
     def convnet(self, input_layer, conv_window, filter_size, pool_window, norm=False):
