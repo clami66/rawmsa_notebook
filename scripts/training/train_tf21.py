@@ -1,5 +1,6 @@
 # Import libraries
 import os
+import sys
 import math
 import h5py
 import argparse
@@ -9,15 +10,11 @@ from time import gmtime, strftime
 from tqdm import tqdm
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras import layers
-from tensorflow.keras.models import Model
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint
 from sklearn.metrics import average_precision_score, precision_recall_curve, roc_auc_score, roc_curve
 
-
+from models import ConvLSTM, Attention
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
-#gpu_options = tf.compat.v1.GPUOptions(per_process_gpu_memory_fraction=0.333)
-#sess = tf.compat.v1.Session(config=tf.compat.v1.ConfigProto(gpu_options=gpu_options))
 
 def parse_config(config_file):
     with open(config_file, 'r') as f:
@@ -38,93 +35,21 @@ args = parser.parse_args()
 config = parse_config(args.config)
 print(config)
 
-class CustomMetrics:
-    @staticmethod
-    def true_positives(y_true, y_pred):
-        correct_preds = tf.cast(tf.equal(tf.reshape(y_true, [-1]), tf.cast(tf.argmax(y_pred, axis=-1), tf.float32)), tf.float32)
-        true_pos = tf.cast(tf.reduce_sum(correct_preds * tf.reshape(y_true, [-1])), tf.int64)
-        return true_pos
-
-    @staticmethod
-    def true_negatives(y_true, y_pred):
-        correct_preds = tf.cast(tf.equal(tf.reshape(y_true, [-1]), tf.cast(tf.argmax(y_pred, axis=-1), tf.float32)), tf.float32)
-        true_neg = tf.cast(tf.reduce_sum(correct_preds * (1 - tf.reshape(y_true, [-1]))), tf.int64)
-        return true_neg
-
-    @staticmethod
-    def positives(y_true, y_pred):
-        pos = tf.cast(tf.reduce_sum(tf.reshape(y_true, [-1])), tf.int64)
-        return pos
-
-    @staticmethod
-    def negatives(y_true, y_pred):
-        neg = tf.cast(tf.reduce_sum(1 - tf.reshape(y_true, [-1])), tf.int64)
-        return neg
-    
-    @staticmethod
-    def balanced_acc(y_true, y_pred):
-	#q2balanced = (float(tps)/ps + float(tns)/ns)/2
-        correct_preds = tf.cast(tf.equal(tf.reshape(y_true, [-1]), tf.cast(tf.argmax(y_pred, axis=-1), tf.float32)), tf.float32)
-        true_pos = tf.cast(tf.reduce_sum(correct_preds * tf.reshape(y_true, [-1])), tf.float32)
-        true_neg = tf.cast(tf.reduce_sum(correct_preds * (1 - tf.reshape(y_true, [-1]))), tf.float32)
-        pos = tf.cast(tf.reduce_sum(tf.reshape(y_true, [-1])), tf.float32)
-        neg = tf.cast(tf.reduce_sum(1 - tf.reshape(y_true, [-1])), tf.float32)
-        return (tf.math.divide_no_nan(true_pos, pos) + tf.math.divide_no_nan(true_neg, neg))/2
-
-class CustomModel:
-    def __init__(self, input_shape, alignment_max_depth, embed_size, stage1_depth, conv_depth, n_filters, pool_depth, bidir_size, stage2_depth, dropfrac):
-        self.input_shape = input_shape
-        self.alignment_max_depth = alignment_max_depth
-        self.embed_size = embed_size
-        self.stage1_depth = stage1_depth
-        self.conv_depth = conv_depth
-        self.n_filters = n_filters
-        self.pool_depth = pool_depth
-        self.bidir_size = bidir_size
-        self.stage2_depth = stage2_depth
-        self.dropfrac = dropfrac
-        self.model = self.build_model()
-
-    def convnet(self, input_layer, conv_window, filter_size, pool_window, norm):
-        stage1 = layers.Conv2D(filter_size, (1, conv_window), activation=None, padding='same')(input_layer)
-        stage1 = layers.Activation('relu')(stage1)
-        if norm:
-            stage1 = layers.BatchNormalization()(stage1)
-        output = layers.MaxPooling2D(pool_size=(1, pool_window))(stage1)
-        return output
-
-    def build_model(self):
-        inputs = layers.Input(shape=self.input_shape)
-        embedded = layers.Embedding(26, self.embed_size)(inputs)
-        #reshaped = layers.Reshape((-1, self.alignment_max_depth, self.embed_size))(embedded)
-
-        convoluted = embedded
-        norm = False
-        for i in range(self.stage1_depth):
-            convoluted = self.convnet(convoluted, self.conv_depth, self.n_filters, self.pool_depth, norm)
-
-        reshaped_2 = layers.Reshape((-1, self.n_filters*int(self.alignment_max_depth/(self.pool_depth**self.stage1_depth))))(convoluted)
-
-        bidir_output = reshaped_2
-        for i in range(self.stage2_depth):
-            bidir_output = layers.Bidirectional(layers.LSTM(self.bidir_size, return_sequences=True), merge_mode='ave')(bidir_output)
-            bidir_output = layers.Dropout(self.dropfrac)(bidir_output)
-
-        #predictions_ = layers.Bidirectional(layers.LSTM(2, return_sequences=True, activation='tanh'), merge_mode='ave')(bidir_output)
-        #predictions = layers.Activation('softmax')(predictions)
-
-        predictions = layers.Dense(2, activation='softmax')(bidir_output)
-
-        model = Model(inputs=inputs, outputs=predictions)
-        return model
-
-    def compile_model(self):
-        print('Compiling the model...')
-        self.model.compile(optimizer='rmsprop',
-                           loss='sparse_categorical_crossentropy',
-                           metrics=['sparse_categorical_accuracy', CustomMetrics.balanced_acc])
 
 class DataProcessor:
+    @staticmethod
+    def process_npy(data, alignment_max_depth):
+        features, labels = data['features'], data['labels']
+        # Process X
+        length = features.shape[0]
+        if length > 3000:
+            length = 3000
+        X = features[:length, :alignment_max_depth][np.newaxis, :] #.reshape(length * alignment_max_depth)[np.newaxis, :]
+
+        labels = np.reshape(labels[:length], (1, length, 1))
+        return X, labels
+
+    
     @staticmethod
     def count_steps(data_list):
         count = 0
@@ -143,41 +68,29 @@ class DataProcessor:
             target_path = Path(data_path, f'{target}.npy')
             if target_path.exists():
                 data = np.load(target_path, allow_pickle=True).item()
-                features, labels = data['features'], data['labels']
             else:
                 continue
+            X, labels = DataProcessor.process_npy(data, alignment_max_depth)
 
-            # Process X
-            length = features.shape[0]
-            X_batch = features[:, :alignment_max_depth][np.newaxis, :] #.reshape(length * alignment_max_depth)[np.newaxis, :]
-
-            labels = np.reshape(labels, (1, labels.shape[0], 1))
-            yield(X_batch, labels)
+            yield X, labels
     
 
 if __name__ == "__main__":
     # PARAMS
     # Load parameters from config file
+    model_type = config.get("model_type")
     train_file = config.get('train_file')
-    test_file = config.get('test_file')
+    test_file = config.get('test_file') # unused
     validation_file = config.get('validation_file')
     msa_tool = config.get('msa_tool')
     data_path = config.get('data_path')
     log_dir = config.get('log_path')
     model_dir = config.get("model_path")
     alignment_max_depth = int(config.get('alignment_max_depth', 1000))
-    embed_size = int(config.get('embed_size', 16))
-    stage1_depth = int(config.get('stage1_depth', 2))
-    conv_depth = int(config.get('conv_depth', 10))
-    n_filters = int(config.get('n_filters', 16))
-    pool_depth = int(config.get('pool_depth', 10))
-    bidir_size = int(config.get('bidir_size', 50))
-    stage2_depth = int(config.get('stage2_depth', 2))
-    dropfrac = float(config.get('dropfrac', 0.5))
-    batch_size = int(config.get('batch_size', 4))
     num_epochs = int(config.get('num_epochs', 100))
-    num_cpu = int(config.get('num_cpu', 30))
+    num_cpu = int(config.get('num_cpu', 30)) # unused
 
+    Path(model_dir).mkdir(parents=True, exist_ok=True)
     # Load train, test, and validation data
     train_list = open(train_file).readlines()
     validate_list = open(validation_file).readlines()
@@ -190,13 +103,17 @@ if __name__ == "__main__":
 
     # INITIALIZE MODELS
     input_shape = (None, alignment_max_depth)
-    model = CustomModel(input_shape, alignment_max_depth, embed_size, stage1_depth, conv_depth, n_filters, pool_depth, bidir_size, stage2_depth, dropfrac)
+    if model_type == "ConvLSTM":
+        model = ConvLSTM.Model(config)
+    elif model_type == "Attention":
+        model = Attention.Model(config)
+    else:
+        print(f"Model type {model_type} doesn't exist")
+        sys.exit(1)
     model.compile_model()
-    print(model.model.summary())
-    #tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=1)
+    model.model.summary()
 
     # TRAINING
-    track_history = []
     best_aupr = 0
 
     Path(log_dir).mkdir(parents=True, exist_ok=True)    # Make log dir
@@ -221,25 +138,21 @@ if __name__ == "__main__":
         y_all_test = []
         for target in tqdm(validate_list):
             target = target.rstrip()
-            data = np.load(f'{data_path}{target}.npy', allow_pickle=True).item()
-            features, labels = data['features'], data['labels']
+            target_path = Path(data_path, f"{target}.npy")
+            if target_path.exists():
+                data = np.load(target_path, allow_pickle=True).item()
+            else:
+                continue
 
-            # Process X
-            length = features.shape[0]
-            X = features[:, :alignment_max_depth].reshape(length * alignment_max_depth)[np.newaxis, :]
-
-            # Process Y
-            labels_ = labels[np.newaxis, :]
-            labels_ = np.reshape(labels_, (1, labels_.shape[1], 1))
+            X, labels = DataProcessor.process_npy(data, alignment_max_depth)
             y = model.model.predict(X)
 
-            labels_all_test.append(labels_.flatten())
-            y_all_test.append(y[0][:,1])
+            labels_all_test.append(labels.flatten())
+            y_all_test.append(y[0][:, 1])
 
         labels_all_test_arr = np.concatenate(labels_all_test)
         y_all_test_arr = np.concatenate(y_all_test)
 
-        # labels_all_arr, y_all_arr = results[key]['labels'], results[key]['y_all']
         pr, re, _ = precision_recall_curve(labels_all_test_arr, y_all_test_arr)
         aupr = average_precision_score(labels_all_test_arr, y_all_test_arr)
         fpr, tpr, thresholds = roc_curve(labels_all_test_arr, y_all_test_arr, pos_label=1)
@@ -257,7 +170,7 @@ if __name__ == "__main__":
             # Save the model
             savepath = Path(model_dir, f"best_model_{msa_tool}_full_{alignment_max_depth}_{np.round(aupr,2)}.h5")
             model.model.save(savepath)
-            print(f'aupr improved from {best_aupr} to {aupr}, saving model')
+            print(f'aupr improved from {best_aupr:.4f} to {aupr:.4f}, saving model')
             best_aupr = aupr
 
 
