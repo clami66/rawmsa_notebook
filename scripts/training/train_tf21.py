@@ -111,7 +111,7 @@ if __name__ == "__main__":
     model.model.summary()
 
     # TRAINING
-    best_aupr = 0
+    best_aupr, best_model_path = 0, 'dummy'
 
     Path(log_dir).mkdir(parents=True, exist_ok=True)    # Make log dir
     timestr = strftime("%Y%m%d-%H%M%S")
@@ -168,7 +168,17 @@ if __name__ == "__main__":
             savepath = Path(model_dir, f"best_model_{msa_tool}_full_{alignment_max_depth}_{np.round(aupr,2)}.h5")
             model.model.save(savepath)
             print(f'aupr improved from {best_aupr:.4f} to {aupr:.4f}, saving model')
+            
+            # delete previious best save
+            if os.path.exists(best_model_path):
+                os.remove(best_model_path)
+
             best_aupr = aupr
+            best_model_path = savepath
+
+    print(f'>>Training finished ({num_epochs} epochs, {alignment_max_depth} depth, {msa_tool} msatool)')
+    print('>>Best validation aupr:', best_aupr)
+    print('>>Trained model saved at:', best_model_path)
 
 
     
