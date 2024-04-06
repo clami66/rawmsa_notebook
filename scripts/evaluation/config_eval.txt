@@ -1,5 +1,5 @@
 # Parameters for evaluation
-test_file=data/test_files.txt
-trained_models=/trained_models/
-data_path=processed_data/
-out_path=results/
+test_file=/proj/wallner/users/x_yogka/rawmsa_disorder/data/lists/new/fold_0/validation
+trained_models=/proj/wallner/users/x_yogka/rawmsa_disorder/data/models
+data_path= /proj/wallner/rawmsa_disorder/data/hhblits/new/npy/
+out_path=/proj/wallner/users/x_yogka/rawmsa_disorder/scripts/evaluation/results
