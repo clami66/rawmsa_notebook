@@ -169,7 +169,7 @@ if __name__ == "__main__":
             # Save the model
             savepath = Path(model_dir, f"best_model_{msa_tool}_full_{alignment_max_depth}_{model_type}_ep{e}_{np.round(aupr,2)}.h5")
             model.model.save(savepath)
-            print(f'aupr improved from {best_aupr:.4f} to {aupr:.4f}, saving model {savepath}')
+            print(f'aupr improved from {best_aupr:.4f} to {aupr:.4f}, saving model')
             
             # delete previious best save
             if os.path.exists(best_model_path):
@@ -177,10 +177,8 @@ if __name__ == "__main__":
 
             best_aupr = aupr
             best_model_path = savepath
-        else:
-            pass
 
-    print(f'>>Training finished (model_type {model_type}, {num_epochs} epochs, {alignment_max_depth} depth, {msa_tool} msatool)')
+    print(f'>>Training finished ({num_epochs} epochs, {alignment_max_depth} depth, {msa_tool} msatool)')
     print('>>Best validation aupr:', best_aupr)
     print('>>Trained model saved at:', best_model_path)
 
