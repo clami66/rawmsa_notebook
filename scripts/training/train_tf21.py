@@ -13,7 +13,7 @@ import tensorflow as tf
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint
 from sklearn.metrics import average_precision_score, precision_recall_curve, roc_auc_score, roc_curve
 
-from models import ConvLSTM, Attention
+from models import ConvLSTM, Attention, Transformer
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
 
 def parse_config(config_file):
@@ -71,7 +71,6 @@ class DataProcessor:
 
             yield X, labels
     
-
 if __name__ == "__main__":
     # PARAMS
     # Load parameters from config file
@@ -83,7 +82,7 @@ if __name__ == "__main__":
     data_path = config.get('data_path')
     log_dir = config.get('log_path')
     model_dir = config.get("model_path")
-    alignment_max_depth = int(config.get('alignment_max_depth', 1000))
+    alignment_max_depth = int(config.get('alignment_max_depth'))
     num_epochs = int(config.get('num_epochs', 100))
     num_cpu = int(config.get('num_cpu', 30)) # unused
 
@@ -104,6 +103,8 @@ if __name__ == "__main__":
         model = ConvLSTM.Model(config)
     elif model_type == "Attention":
         model = Attention.Model(config)
+    elif model_type =='Transformer':
+        model = Transformer.Model(config)
     else:
         print(f"Model type {model_type} doesn't exist")
         sys.exit(1)
@@ -115,7 +116,8 @@ if __name__ == "__main__":
 
     Path(log_dir).mkdir(parents=True, exist_ok=True)    # Make log dir
     timestr = strftime("%Y%m%d-%H%M%S")
-    with open(f'{log_dir}{timestr}_{msa_tool}_full_{alignment_max_depth}', mode='w') as f:
+    log_file = f'{log_dir}/{timestr}_{msa_tool}_full_{alignment_max_depth}_{model_type}'
+    with open(log_file, mode='w') as f:
         f.write(f'epoch, msa_depth, auroc, aupr\n')
 
     train_steps = DataProcessor.count_steps(train_list)
@@ -158,16 +160,16 @@ if __name__ == "__main__":
         print(f'Epoch {e}, Depth: {alignment_max_depth}, auroc: {auroc}, aupr: {aupr}')
 
         # Print test metrics
-        with open(f'{log_dir}{timestr}_{msa_tool}_full_{alignment_max_depth}', mode='a') as f:
+        with open(log_file, mode='a') as f:
             f.write(f'{e},{alignment_max_depth},{auroc},{aupr}\n')
         f.close()
 
         # Calculate AUPR and compare with best AUPR
         if aupr > best_aupr:
             # Save the model
-            savepath = Path(model_dir, f"best_model_{msa_tool}_full_{alignment_max_depth}_{np.round(aupr,2)}.h5")
+            savepath = Path(model_dir, f"best_model_{msa_tool}_full_{alignment_max_depth}_{model_type}_ep{e}_{np.round(aupr,2)}.h5")
             model.model.save(savepath)
-            print(f'aupr improved from {best_aupr:.4f} to {aupr:.4f}, saving model')
+            print(f'aupr improved from {best_aupr:.4f} to {aupr:.4f}, saving model {savepath}')
             
             # delete previious best save
             if os.path.exists(best_model_path):
@@ -175,8 +177,10 @@ if __name__ == "__main__":
 
             best_aupr = aupr
             best_model_path = savepath
+        else:
+            pass
 
-    print(f'>>Training finished ({num_epochs} epochs, {alignment_max_depth} depth, {msa_tool} msatool)')
+    print(f'>>Training finished (model_type {model_type}, {num_epochs} epochs, {alignment_max_depth} depth, {msa_tool} msatool)')
     print('>>Best validation aupr:', best_aupr)
     print('>>Trained model saved at:', best_model_path)
 
