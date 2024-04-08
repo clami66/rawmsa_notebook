@@ -11,7 +11,7 @@ from tqdm import tqdm
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint
-from sklearn.metrics import average_precision_score, precision_recall_curve, roc_auc_score, roc_curve
+from sklearn import metrics #import average_precision_score, precision_recall_curve, roc_auc_score, roc_curve, balanced_accuracy_score
 
 from models import ConvLSTM, Attention
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
@@ -123,6 +123,7 @@ if __name__ == "__main__":
 
     train_steps = DataProcessor.count_steps(train_list)
     print("Training steps:", train_steps)
+    cce = tf.keras.losses.SparseCategoricalCrossentropy()
 
     for e in range(num_epochs):
         print('Fit, epoch ' + str(e) + ":")
@@ -148,17 +149,18 @@ if __name__ == "__main__":
             y = model.model.predict(X)
 
             labels_all_test.append(labels.flatten())
-            y_all_test.append(y[0][:, 1])
+            y_all_test.append(y[0]) #[:, 1])
 
         labels_all_test_arr = np.concatenate(labels_all_test)
         y_all_test_arr = np.concatenate(y_all_test)
 
-        pr, re, _ = precision_recall_curve(labels_all_test_arr, y_all_test_arr)
-        aupr = average_precision_score(labels_all_test_arr, y_all_test_arr)
-        fpr, tpr, thresholds = roc_curve(labels_all_test_arr, y_all_test_arr, pos_label=1)
-        auroc = roc_auc_score(labels_all_test_arr, y_all_test_arr)
-
-        print(f'Epoch {e}, Depth: {alignment_max_depth}, auroc: {auroc}, aupr: {aupr}')
+        pr, re, _ = metrics.precision_recall_curve(labels_all_test_arr, y_all_test_arr[:, 1])
+        aupr = metrics.average_precision_score(labels_all_test_arr, y_all_test_arr[:, 1])
+        fpr, tpr, thresholds = metrics.roc_curve(labels_all_test_arr, y_all_test_arr[:, 1], pos_label=1)
+        auroc = metrics.roc_auc_score(labels_all_test_arr, y_all_test_arr[:, 1])
+        balanced_accuracy = metrics.balanced_accuracy_score(labels_all_test_arr, np.round(y_all_test_arr[:, 1]))
+        val_loss = cce(labels_all_test_arr, y_all_test_arr)
+        print(f'Epoch {e}, Depth: {alignment_max_depth:.3f}, loss: {val_loss:.3f}, auroc: {auroc:.3f}, aupr: {aupr:.3f}, balanced acc: {balanced_accuracy:.3f}')
 
         # Print test metrics
         with open(f'{log_dir}{timestr}_{msa_tool}_full_{alignment_max_depth}', mode='a') as f:
