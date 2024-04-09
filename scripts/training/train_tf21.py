@@ -14,7 +14,7 @@ from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint
 from sklearn import metrics #import average_precision_score, precision_recall_curve, roc_auc_score, roc_curve, balanced_accuracy_score
 
 from models import ConvLSTM, Attention
-from utils.NetUtils import CustomMetrics
+from utils.NetUtils import CustomMetrics, DataProcessor
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
 
 def parse_config(config_file):
@@ -35,42 +35,6 @@ args = parser.parse_args()
 # Parse config file
 config = parse_config(args.config)
 print(config)
-
-
-class DataProcessor:
-    @staticmethod
-    def process_npy(data, alignment_max_depth):
-        features, labels = data['features'], data['labels']
-        # Process X
-        length = features.shape[0]
-        if length > 3000:
-            length = 3000
-        X = features[:length, :alignment_max_depth][np.newaxis, :] #.reshape(length * alignment_max_depth)[np.newaxis, :]
-
-        labels = np.reshape(labels[:length], (1, length, 1))
-        return X, labels
-    
-    @staticmethod
-    def count_steps(data_list):
-        count = 0
-        for target in data_list:
-            target = target.rstrip()
-            if Path(data_path, f"{target}.npy").exists():
-                count += 1
-        return count
-
-    @staticmethod
-    def generate_inputs_onego(data_list, alignment_max_depth):
-        for target in data_list:
-            target = target.rstrip()
-            target_path = Path(data_path, f'{target}.npy')
-            if target_path.exists():
-                data = np.load(target_path, allow_pickle=True).item()
-            else:
-                continue
-            X, labels = DataProcessor.process_npy(data, alignment_max_depth)
-
-            yield X, labels
     
 if __name__ == "__main__":
     # PARAMS
@@ -92,22 +56,16 @@ if __name__ == "__main__":
     train_list = open(train_file).readlines()
     validate_list = open(validation_file).readlines()
 
-    # INITIALIZE GPU
-    gpus = tf.config.experimental.list_physical_devices('GPU')
-    tf.config.experimental.set_memory_growth(gpus[0], True)
-    tf.config.set_visible_devices(gpus[0], 'GPU') # unhide potentially hidden GPU
-    tf.config.get_visible_devices()
-
     # INITIALIZE MODELS
     input_shape = (None, alignment_max_depth)
     if model_type == "ConvLSTM":
         model = ConvLSTM.Model(config)
     elif model_type == "Attention":
         model = Attention.Model(config)
-    elif model_type =='Transformer':
-        model = Transformer.Model(config)
-    elif model_type =='ConvLSTM_v2':
-        model = ConvLSTM_v2.Model(config)
+    # elif model_type =='Transformer':
+    #     model = Transformer.Model(config)
+    # elif model_type =='ConvLSTM_v2':
+    #     model = ConvLSTM_v2.Model(config)
     else:
         print(f"Model type {model_type} doesn't exist")
         sys.exit(1)
@@ -123,14 +81,15 @@ if __name__ == "__main__":
     with open(log_file, mode='w') as f:
         f.write(f'epoch, msa_depth, auroc, aupr\n')
 
-    train_steps = DataProcessor.count_steps(train_list)
+    data_processor = DataProcessor(config)
+    train_steps = data_processor.count_steps(train_list)
     print("Training steps:", train_steps)
     cce = tf.keras.losses.SparseCategoricalCrossentropy()
 
     for e in range(num_epochs):
         print('Fit, epoch ' + str(e) + ":")
         print(strftime("%Y-%m-%d %H:%M:%S", gmtime()))
-        history = model.model.fit(DataProcessor.generate_inputs_onego(train_list,alignment_max_depth),
+        history = model.model.fit(data_processor.generate_inputs_onego(alignment_max_depth, train_list),
                                 steps_per_epoch=train_steps,
                                 epochs=1,
                                 callbacks=[],
