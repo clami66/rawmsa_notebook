@@ -13,7 +13,8 @@ import tensorflow as tf
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint
 from sklearn.metrics import average_precision_score, precision_recall_curve, roc_auc_score, roc_curve
 
-from models import ConvLSTM, Attention, Transformer
+from models import ConvLSTM, Attention, Transformer, ConvLSTM_v2
+from utils.NetUtils import CustomMetrics
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
 
 def parse_config(config_file):
@@ -105,6 +106,8 @@ if __name__ == "__main__":
         model = Attention.Model(config)
     elif model_type =='Transformer':
         model = Transformer.Model(config)
+    elif model_type =='ConvLSTM_v2':
+        model = ConvLSTM_v2.Model(config)
     else:
         print(f"Model type {model_type} doesn't exist")
         sys.exit(1)
@@ -147,8 +150,9 @@ if __name__ == "__main__":
             y = model.model.predict(X)
 
             labels_all_test.append(labels.flatten())
-            y_all_test.append(y[0][:, 1])
+            y_all_test.append(y[0])
 
+        print(y)
         labels_all_test_arr = np.concatenate(labels_all_test)
         y_all_test_arr = np.concatenate(y_all_test)
 
@@ -167,7 +171,7 @@ if __name__ == "__main__":
         # Calculate AUPR and compare with best AUPR
         if aupr > best_aupr:
             # Save the model
-            savepath = Path(model_dir, f"best_model_{msa_tool}_full_{alignment_max_depth}_{model_type}_ep{e}_{np.round(aupr,2)}.h5")
+            savepath = Path(model_dir, f"{timestr}_best_model_{msa_tool}_full_{alignment_max_depth}_{model_type}_ep{e}_{np.round(aupr,2)}.h5")
             model.model.save(savepath)
             print(f'aupr improved from {best_aupr:.4f} to {aupr:.4f}, saving model')
             
