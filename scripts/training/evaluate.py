@@ -1,6 +1,4 @@
 import sys
-sys.path.append('/proj/wallner/users/x_yogka/rawmsa_disorder/scripts/training/')
-
 import argparse
 from pathlib import Path
 from time import gmtime, strftime
