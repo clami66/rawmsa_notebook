@@ -1,0 +1,5 @@
+# Parameters for evaluation
+input_file=input_fasta.fasta
+trained_models=data/models
+msa_path=data/msas
+out_path=results

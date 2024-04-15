@@ -1,5 +1,0 @@
-# Parameters for evaluation
-test_file=/proj/wallner/users/x_yogka/rawmsa_disorder/data/lists/new/fold_0/validation
-trained_models=/proj/wallner/users/x_yogka/rawmsa_disorder/data/models
-data_path=/proj/wallner/rawmsa_disorder/data/mmseqs/100/npy/
-out_path=/proj/wallner/users/x_yogka/rawmsa_disorder/scripts/evaluation/results
