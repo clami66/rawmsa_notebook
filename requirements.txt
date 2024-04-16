@@ -1,5 +1,0 @@
-tensorflow==2.11.1
-tqdm
-scikit-learn
-biopython==1.82
-numpy
