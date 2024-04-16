@@ -7,6 +7,8 @@ import sys, os
 import argparse
 from pathlib import Path
 from time import gmtime, strftime
+import time
+import csv
 
 from Bio import SeqIO
 import tensorflow as tf
@@ -86,25 +88,40 @@ if __name__ == "__main__":
             print('Run mmseq2')
     
     # Load model and predict
+    models = []
     for model_path in glob.glob(trained_models+'/*'):
-        print('\nFound trained model:', model_path)
-        ew_model = tf.keras.models.load_model(model_path, custom_objects={"balanced_acc": CustomMetrics.balanced_acc})
         alignment_max_depth = int(model_path.split('_')[-4]) # Required model_name to be in a specific_format
+        model = tf.keras.models.load_model(model_path, custom_objects={"balanced_acc": CustomMetrics.balanced_acc})
+        models.append((model, alignment_max_depth))
 
-        print(f'Predicting disorder for {len(records)} proteins')
-        for record in tqdm(records):
+    exec_times = []
+    print(f'Predicting disorder for {len(records)} proteins')
+    for record in tqdm(records):
+        start_time = time.time()
+        list_y = []
+        for ew_model, alignment_max_depth in models:
             protein = record.id
             features = np.load(f"{internal_datasets['npy']}/{protein}.npy", allow_pickle=True).item()['features']
             X = features[:, :alignment_max_depth][np.newaxis, :] #.reshape(length * alignment_max_depth)[np.newaxis, :]
 
             y = ew_model.predict(X,verbose=0)
-            #print(y)
-            logits_positive = np.squeeze(y)[:,1]
-            y_binary = np.argmax(np.squeeze(y), axis=-1)
+            list_y.append(np.squeeze(y))
 
-            # Write results to file
-            with open(f'{out_path}/{protein}.caid', 'w') as reader: 
-                reader.write(f'>{protein}\n')
-                for (i, residue, logit, pred) in zip(range(len(record.seq)), list(record.seq), logits_positive, y_binary):
-                    reader.write('{}\t{}\t{:.3f}\t{}\n'.format(i + 1, residue, logit, pred)) 
-        break
+        mean_y = np.mean(list_y, axis=0)                    # Compute mean logits
+        mean_y = tf.nn.softmax(mean_y, axis=1, name=None)   # Apply softmaax on mean logits
+        logits_positive = mean_y[:,1]                       # Get positive probs
+        y_binary = np.argmax(mean_y, axis=-1)               # Binarize
+
+        # Write results to file
+        with open(f'{out_path}/{protein}.caid', 'w') as reader: 
+            reader.write(f'>{protein}\n')
+            for (i, residue, logit, pred) in zip(range(len(record.seq)), list(record.seq), logits_positive, y_binary):
+                reader.write('{}\t{}\t{:.3f}\t{}\n'.format(i + 1, residue, logit, pred)) 
+        end_time = time.time()
+        exec_times.append(end_time - start_time)
+        print(f'{protein} took {end_time - start_time} secs')
+
+    with open('timings.csv', 'w') as timingfile:
+        timingfile.write('sequence,milliseconds\n')
+        for record, time_taken in zip(records, exec_times):
+            timingfile.write(f'{str(record.id)},{str(int(time_taken * 1000))}\n')  # Convert seconds to milliseconds
