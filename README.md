@@ -3,7 +3,7 @@
 Download docker image <DOCKERHUB-URL>
 
 # Load image
-sudo docker load <image-path>
+sudo docker load -i <image-path>
 
 # Run container
 sudo docker run -v <path-to-input-fasta-folder>:/app/input_fasta -v <path-to-msa-folder>:/app/mounted_msas
