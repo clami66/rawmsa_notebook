@@ -105,7 +105,7 @@ def aln2num(aln, output):
     return None
 
 def a3m2aln(msa, outpath):
-    cmd = f"egrep -v '^>' {msa} | sed 's/[a-z]//g'>{outpath}"
+    cmd = f"egrep -v '^>' {msa} | egrep -v '^#' | sed 's/[a-z]//g' > {outpath}"
     os.system(cmd)
     #print(cmd)
     return None
