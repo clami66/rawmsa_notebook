@@ -16,6 +16,7 @@ import numpy as np
 from numpy import newaxis
 from tqdm import tqdm
 import glob
+import matplotlib.pyplot as plt
 from utils.NetUtils import CustomMetrics, DataProcessor, a3m2aln, aln2num, pad_or_trim_array
 
 def parse_config(config_file):
@@ -38,15 +39,27 @@ def parse_config(config_file):
     except FileNotFoundError:
         print(f'\nConfig file not found at {config_file}. Exiting...')
         sys.exit()
+
 # Define command-line arguments
 parser = argparse.ArgumentParser(description='Identify disordered regions in a protein sequence.')
 parser.add_argument('--config', type=str, default='config_eval.txt', help='Path to the config file.')
 args = parser.parse_args()
 
-# Parse config file
-config = parse_config(args.config)
-
 if __name__ == "__main__":
+    print(" \n \
+                                                _ _                   _           \n \
+                                                | (_)                 | |          \n \
+    _ __ __ ___      ___ __ ___  ___  __ _   __| |_ ___  ___  _ __ __| | ___ _ __ \n \
+    | '__/ _` \ \ /\ / / '_ ` _ \/ __|/ _` | / _` | / __|/ _ \| '__/ _` |/ _ \ '__|\n \
+    | | | (_| |\ V  V /| | | | | \__ \ (_| || (_| | \__ \ (_) | | | (_| |  __/ |   \n \
+    |_|  \__,_| \_/\_/ |_| |_| |_|___/\__,_| \__,_|_|___/\___/|_|  \__,_|\___|_|   \n \
+                                        ______                                    \n \
+                                        |______|                                   \n \
+                        ")
+
+    # Parse config file
+    config = parse_config(args.config)
+
     # Load parameters from config file
     input_file = config.get('input_file')
     trained_models = config.get('trained_models')
@@ -96,7 +109,7 @@ if __name__ == "__main__":
 
     exec_times = []
     print(f'Predicting disorder for {len(records)} proteins')
-    for record in tqdm(records):
+    for record in records:
         start_time = time.time()
         list_y = []
         for ew_model, alignment_max_depth in models:
@@ -106,7 +119,7 @@ if __name__ == "__main__":
 
             y = ew_model.predict(X,verbose=0)
             list_y.append(np.squeeze(y))
-
+            
         mean_y = np.mean(list_y, axis=0)                    # Compute mean logits
         mean_y = tf.nn.softmax(mean_y, axis=1, name=None)   # Apply softmaax on mean logits
         logits_positive = mean_y[:,1]                       # Get positive probs
@@ -120,6 +133,24 @@ if __name__ == "__main__":
         end_time = time.time()
         exec_times.append(end_time - start_time)
         print(f'{protein} took {end_time - start_time} secs')
+
+        fig = plt.figure(figsize=(10,10))
+        #fig = plt.figure(figsize=(10, 8))
+        gs = fig.add_gridspec(10) 
+
+        # Define subplots with unequal sizes
+        ax1 = fig.add_subplot(gs[:8]) 
+        ax2 = fig.add_subplot(gs[8]) 
+        ax3 = fig.add_subplot(gs[9]) 
+
+        res_1 = np.array(logits_positive).reshape(-1,1)
+        res_2 = np.array(y_binary).reshape(-1,1)
+
+        ax1.imshow(X[0].T, aspect='auto', cmap='tab20b')
+        ax2.imshow(res_1.T, aspect='auto' , vmin=0, vmax=1)
+        ax3.imshow(res_2.T, aspect='auto', cmap='binary')
+        plt.tight_layout()
+        plt.savefig(f"{out_path}/{protein}.pdf", format="pdf", bbox_inches="tight")
 
     with open('timings.csv', 'w') as timingfile:
         timingfile.write('sequence,milliseconds\n')
