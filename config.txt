@@ -1,0 +1,5 @@
+# Parameters for evaluation
+input_file=input_fasta/input_fasta.fasta
+trained_models=docker/data/models
+msa_path=mounted_msas
+out_path=results
