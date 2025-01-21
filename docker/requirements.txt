@@ -1,5 +1,6 @@
 tensorflow==2.11.1
 tqdm
 scikit-learn
-biopython==1.82
+biopython==1.79
 numpy
+matplotlib
