@@ -4,3 +4,5 @@ scikit-learn
 biopython==1.79
 numpy
 matplotlib
+mercury
+colabfold[alphafold-minus-jax]
