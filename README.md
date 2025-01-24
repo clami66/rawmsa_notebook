@@ -18,4 +18,5 @@
 
 ## Run
 
-Launch the mercury server: `mercury run notebooks/
+1. Launch the mercury server: `mercury run notebooks/rawmsa_disorder.ipynb`
+2. Open the browser at: [http://127.0.0.1:8000/app/rawmsa_disorder](http://127.0.0.1:8000/app/rawmsa_disorder)
