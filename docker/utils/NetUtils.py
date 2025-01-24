@@ -151,14 +151,14 @@ def plot_results(X, logits_positive, y_binary, jobname):
     ax2.set_ylabel('Disorder probablity')
     
     # Binary map
-    binary_cmap = ListedColormap(['#BD081C', '#09B83E'])
+    binary_cmap = ListedColormap(['#09B83E', '#BD081C'])
     ax3.imshow(res_2.T, aspect='auto', cmap=binary_cmap)
     ax3.set_ylabel('Binary')
     ax3.set_xlabel('Residue')
     ax3.set_yticks([])
     handles = [
-        plt.Line2D([0], [0], color='#BD081C', lw=4, label='Ordered'),
-        plt.Line2D([0], [0], color='#09B83E', lw=4, label='Disordered')
+        plt.Line2D([0], [0], color='#09B83E', lw=4, label='Ordered'),
+        plt.Line2D([0], [0], color='#BD081C', lw=4, label='Disordered')
     ]
     plt.legend(ncol=2, handles=handles, bbox_to_anchor=(0.35, -1.8))
 
