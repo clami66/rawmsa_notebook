@@ -9,25 +9,13 @@
                                       ______                                    
                                      |______|                                   
 ```
-## Usage (Docker)
-```
-Download docker image <DOCKERHUB-URL>
+## Installation
 
-# Load image
-sudo docker load -i <image-path>
+1. Create new conda environment: `conda create -n rawmsa_disorder python==3.9`
+2. Activate the conda environment: `conda activate ramwsa_disorder`
+3. Install necessary packages with pip: `python -m pip install -f docker/requirements.txt`
+4. Set up the following environmental variable: `export RAWMSA_PATH=$(pwd)` from the `rawmsa_disorder/` directory
 
-# Run container
-sudo docker run -v <path-to-input-fasta-folder>:/app/input_fasta -v <path-to-msa-folder>:/app/mounted_msas rawmsa_disorder2
+## Run
 
-# Retreive results
-sudo docker cp <container-id>:/app/results .
-```
-## Usage (python)
-```
-# Clone repo
-git clone https://github.com/clami66/rawmsa_disorder
-
-# Run rawmsa_disorder
-python docker/run_rawmsa_disorder.py --config config.txt
-```
-Results will be saved in .results/
+Launch the mercury server: `mercury run notebooks/
