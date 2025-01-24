@@ -3,6 +3,9 @@ import os, sys
 import tensorflow as tf
 import numpy as np
 from pathlib import Path
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
+
 
 class CustomMetrics:
     @staticmethod
@@ -119,3 +122,46 @@ def pad_or_trim_array(arr, target_shape):
         return arr[:target_shape, :]
     else:
         return arr
+
+def plot_results(X, logits_positive, y_binary, jobname):
+    fig = plt.figure(figsize=(8,8))
+    gs = fig.add_gridspec(10) 
+
+    cmap = plt.cm.tab20b
+    custom_cmap = cmap(np.arange(cmap.N))
+    custom_cmap[19, :] = [1, 1, 1, 1]  # Set the 21st color to white
+    custom_cmap = ListedColormap(custom_cmap)
+    
+    # Define subplots with unequal sizes
+    ax1 = fig.add_subplot(gs[:6]) 
+    ax2 = fig.add_subplot(gs[6:9]) 
+    ax3 = fig.add_subplot(gs[9]) 
+    
+    res_1 = np.array(logits_positive).reshape(-1,1)
+    res_2 = np.array(y_binary).reshape(-1,1)
+    
+    ax2.axhline(y = 0.5, color = 'r', linestyle = '--') 
+    ax1.imshow(X[0].T, aspect='auto', cmap=custom_cmap)
+    ax1.set_ylabel('MSA depth')
+    ax1.set_title(f'rawmsa_disorder <{jobname.value}>')
+
+    ax2.plot(res_1, color='black', linewidth=2)
+    ax2.set_xlim(0,len(res_1))
+    ax2.set_ylim(0,1)
+    ax2.set_ylabel('Disorder probablity')
+    
+    # Binary map
+    binary_cmap = ListedColormap(['#BD081C', '#09B83E'])
+    ax3.imshow(res_2.T, aspect='auto', cmap=binary_cmap)
+    ax3.set_ylabel('Binary')
+    ax3.set_xlabel('Residue')
+    ax3.set_yticks([])
+    handles = [
+        plt.Line2D([0], [0], color='#BD081C', lw=4, label='Ordered'),
+        plt.Line2D([0], [0], color='#09B83E', lw=4, label='Disordered')
+    ]
+    plt.legend(ncol=2, handles=handles, bbox_to_anchor=(0.35, -1.8))
+
+    plt.tight_layout()
+    plt.show()
+    return None
