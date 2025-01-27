@@ -14,7 +14,7 @@
 1. Create new conda environment: `conda create -n rawmsa_disorder python==3.9`
 2. Activate the conda environment: `conda activate ramwsa_disorder`
 3. Clone the git repository and enter the repository directory: `git clone https://github.com/clami66/rawmsa_notebook.git; cd rawmsa_notebook`
-4. Install necessary packages with pip: `python -m pip install -f docker/requirements.txt`
+4. Install necessary packages with pip: `python -m pip install -r docker/requirements.txt`
 5. Set up the following environmental variable: `export RAWMSA_PATH=$(pwd)` from the `rawmsa_disorder/` directory
 
 ## Run
